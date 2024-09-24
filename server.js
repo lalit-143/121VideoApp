@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 
-const sendPORT = process.env.PORT || 8080;
-const receivePORT = process.env.PORT || 8081;
+const sendPORT = 8080;
+const receivePORT = 8081;
 
 const sendServer = new WebSocket.Server({ port: sendPORT });
 const receiveServer = new WebSocket.Server({ port: receivePORT });
