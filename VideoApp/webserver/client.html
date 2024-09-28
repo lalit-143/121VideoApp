@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket Video Stream</title>
+    <style>
+        video {
+            width: 45%;
+            margin: 10px;
+        }
+        .video-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .video-title {
+            font-size: 1.2em;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        <div class="video-title">Local Camera</div>
+        <video id="localVideo" autoplay muted></video>
+    </div>
+    <div class="video-container">
+        <div class="video-title">Remote Camera</div>
+        <video id="remoteVideo" autoplay></video>
+    </div>
+    <script>
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const socket = new WebSocket('ws://localhost:8080');
+
+        // Get user media
+        navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+            .then(stream => {
+                localVideo.srcObject = stream;
+                const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp8' });
+
+                mediaRecorder.ondataavailable = event => {
+                    if (event.data.size > 0) {
+                        socket.send(event.data);
+                        console.log('Data sent to server');
+                    }
+                };
+
+                mediaRecorder.start(100); // Send data every 100ms for smoother streaming
+            })
+            .catch(error => {
+                console.error('Error accessing media devices.', error);
+            });
+
+        // MediaSource Extensions setup for remote video
+        const mediaSource = new MediaSource();
+        remoteVideo.src = URL.createObjectURL(mediaSource);
+
+        mediaSource.addEventListener('sourceopen', () => {
+            const sourceBuffer = mediaSource.addSourceBuffer('video/webm; codecs="vp8"');
+
+            sourceBuffer.addEventListener('error', (e) => {
+                console.error('SourceBuffer error:', e);
+            });
+
+            sourceBuffer.addEventListener('updateend', () => {
+                console.log('SourceBuffer update ended');
+            });
+
+            socket.onmessage = event => {
+                console.log('Data received from server');
+                const videoBlob = new Blob([event.data], { type: 'video/webm' });
+                const reader = new FileReader();
+                reader.onload = () => {
+                    if (remoteVideo.error) {
+                        console.error('Remote video element is in an error state:', remoteVideo.error);
+                        return;
+                    }
+                    if (!sourceBuffer.updating) {
+                        try {
+                            sourceBuffer.appendBuffer(new Uint8Array(reader.result));
+                        } catch (e) {
+                            console.error('Error appending buffer:', e);
+                        }
+                    } else {
+                        console.log('SourceBuffer is updating, skipping append.');
+                    }
+                };
+                reader.readAsArrayBuffer(videoBlob);
+            };
+        });
+
+        socket.onopen = () => {
+            console.log('WebSocket connection opened');
+        };
+
+        socket.onclose = () => {
+            console.log('WebSocket connection closed');
+            // Attempt to reconnect
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        };
+
+        socket.onerror = error => {
+            console.error('WebSocket error:', error);
+        };
+
+        // Monitor buffer and adjust playback rate
+        setInterval(() => {
+            if (remoteVideo.buffered.length > 0) {
+                const bufferedEnd = remoteVideo.buffered.end(remoteVideo.buffered.length - 1);
+                const currentTime = remoteVideo.currentTime;
+                const bufferLength = bufferedEnd - currentTime;
+
+                if (bufferLength > 5) {
+                    remoteVideo.playbackRate = 1.5; // Increase playback rate to reduce buffer
+                } else {
+                    remoteVideo.playbackRate = 1.0; // Normal playback rate
+                }
+            }
+        }, 1000);
+
+        // Pause/resume remote video based on tab visibility
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                remoteVideo.play();
+            } else {
+                remoteVideo.pause();
+            }
+        });
+    </script>
+</body>
+</html>
