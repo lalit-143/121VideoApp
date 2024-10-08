@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "express": "^4.21.0",
-    "opencv4nodejs-prebuilt-install": "^4.1.209",
-    "path": "^0.12.7",
-    "socket.io": "^4.8.0"
-  }
-}
